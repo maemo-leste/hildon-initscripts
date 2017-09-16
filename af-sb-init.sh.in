@@ -1,0 +1,302 @@
+#!/bin/sh
+# Script for starting Maemo environment in Scratchbox.
+#
+# This file is part of osso-af-sb-startup
+#
+# Copyright (C) 2004-2007 Nokia Corporation. All rights reserved.
+#
+# Contact: Kimmo Hämäläinen <kimmo.hamalainen@nokia.com>
+#
+# This program is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License 
+# version 2 as published by the Free Software Foundation. 
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+# 02110-1301 USA
+
+export PATH=/host_usr/bin:/bin:/usr/bin:/usr/local/bin:/usr/X11R6/bin:/sbin:/usr/sbin
+export SBOX_REDIRECT_FROM_DIRS=
+
+
+DIR=@sysconfdir@/osso-af-init
+KILL=/scratchbox/tools/bin/kill
+CLOCKD=/usr/bin/clockd
+ALARMD=/usr/sbin/alarmd.wrapper
+MAFW=/usr/bin/mafw-dbus-wrapper
+SYSTEMUI=/usr/bin/systemui
+TRACKER=/usr/lib/tracker/trackerd
+
+af_sb_service() # $1 name, $2 start|stop
+{
+  AF_SB_SERVICE_NAME=$1
+  AF_SB_SERVICE_ACTION=$2
+
+  if [ -e $DIR/$AF_SB_SERVICE_NAME.defs ]; then
+    . $DIR/$AF_SB_SERVICE_NAME.defs
+  fi
+  if [ -e $DIR/$AF_SB_SERVICE_NAME.sh ]; then
+    . $DIR/$AF_SB_SERVICE_NAME.sh $AF_SB_SERVICE_ACTION
+  fi 
+}
+
+af_sb_init_service() # $1 name, $2 start|stop
+{
+  AF_SB_INIT_SERVICE_NAME=$1
+  AF_SB_INIT_SERVICE_ACTION=$2
+
+  if test -x /etc/init.d/$AF_SB_INIT_SERVICE_NAME; then
+    /etc/init.d/$AF_SB_INIT_SERVICE_NAME $AF_SB_INIT_SERVICE_ACTION
+  fi
+}
+
+af_sb_init_misbehaving_service() # $1 path, $2 start|stop
+{
+  AF_SB_INIT_SERVICE_PATH=$1
+  AF_INIT_COMMAND="start-stop-daemon --$2 --quiet --exec"
+
+  if test -x $AF_SB_INIT_SERVICE_PATH; then
+    $AF_INIT_COMMAND $AF_SB_INIT_SERVICE_PATH &
+  fi
+}
+
+STOP=FALSE
+START=FALSE
+GDB=
+
+if [ $# = 0 ]; then
+  echo "Usage: $0 {start|stop|restart} [--valgrind cmd] [--gdb appname]"
+  exit 0
+fi
+
+case "$1" in
+start)  START="TRUE"
+        ;;
+stop)   STOP="TRUE"
+        ;;
+restart|force-reload)
+        STOP="TRUE"
+        START="TRUE"
+        ;;
+*)      echo "Usage: $0 {start|stop|restart} [--valgrind cmd] [--gdb cmd]"
+        exit 0
+        ;;
+esac
+shift
+
+while [ $# != 0 ]; do
+  if [ "$1" = "--valgrind" ]; then
+    shift
+    export VALGRINDCMD=$1
+    export VALGRIND="valgrind --leak-check=yes --trace-children=yes --num-callers=100 --logfile=/tmp/valgrind-$VALGRINDCMD.log"
+  fi
+  if [ "$1" = "--gdb" ]; then
+    shift
+    export GDB=$1
+  fi
+  shift
+done
+
+AF_DEFS=$DIR/af-defines.sh
+
+if [ ! -r $AF_DEFS ]; then
+  echo "$0: Error, $AF_DEFS does not exist or is not readable"
+  exit 2
+fi
+
+. $AF_DEFS
+
+# let's use /var/run as pid dir and make sure it is not a link
+export AF_PIDDIR=/var/run
+if [ -L $AF_PIDDIR ]; then
+  rm $AF_PIDDIR
+fi
+
+if [ ! -d $AF_PIDDIR ]; then
+  mkdir $AF_PIDDIR
+fi
+
+# dbus wants this, so let's make sure it is found.
+mkdir -p /var/run/dbus
+
+# overriding some variables
+export HOME="/home/$USER"
+export MYDOCSDIR=$HOME/MyDocs
+
+. $DIR/osso-gtk.defs
+
+# Let's use SB launcher wrapper
+export LAUNCHWRAPPER=/usr/bin/scratchbox-launcher.sh
+
+# We have only one wrapper in SB
+export LAUNCHWRAPPER_NICE=$LAUNCHWRAPPER
+export LAUNCHWRAPPER_NICE_KILL=$LAUNCHWRAPPER
+export LAUNCHWRAPPER_NICE_TRYRESTART=$LAUNCHWRAPPER
+export LAUNCHWRAPPER_TRYRESTART=$LAUNCHWRAPPER
+
+# Check our environment
+if [ -e /targets/links/scratchbox.config ]; then
+  . /targets/links/scratchbox.config
+  if echo $SBOX_CPUTRANSPARENCY_METHOD | grep "sbrsh$" >/dev/null; then
+    if [ -z "$SBOX_TARGET_NAME" ]; then
+      echo "$0: SBOX_CPUTRANSPARENCY_METHOD defined but SBOX_TARGET_NAME not!"
+      exit 1
+    fi
+
+    # we are using Scratchbox and sbrsh
+    SBRSH="sbrsh $SBOX_TARGET_NAME"
+  fi
+fi
+
+# check DISPLAY before starting anything
+if [ "x$START" = "xTRUE" -a "x$DISPLAY" = "x" ]; then
+  echo "$0: Error, the DISPLAY environment variable is not defined."
+  echo "DISPLAY must be host:display when using sbrsh in Scratchbox and"
+  echo "X forwarding will be used. If you use Xephyr, set DISPLAY to :N,"
+  echo "where 'N' is the display number passed to Xephyr in command line."
+  exit 1
+fi
+
+# we need to save these, because the source commands below messes them up
+TMPSTART=$START
+TMPSTOP=$STOP
+if [ "$STOP" = "TRUE" ]; then
+
+  af_sb_init_misbehaving_service $CLOCKD stop
+  af_sb_init_misbehaving_service $ALARMD stop
+  af_sb_init_misbehaving_service $SYSTEMUI stop
+  af_sb_service $TRACKER stop
+  af_sb_init_service tablet-browser-daemon.init stop
+  af_sb_service keyboard        stop
+
+  HILDON_STATUS_MENU_PID=$(pidof hildon-status-menu)
+  if test "x$HILDON_STATUS_MENU_PID" != "x"; then
+    $KILL $HILDON_STATUS_MENU_PID
+  fi
+
+  af_sb_init_service hildon-desktop stop
+  af_sb_service sapwood-server  stop
+  af_sb_service dbus-sessionbus stop
+  af_sb_service dbus-systembus  stop
+
+  # stop maemo-launcher
+  af_sb_init_service maemo-launcher stop
+
+  # stop at-spi 
+  af_sb_init_service at-spi stop
+
+  # just in case something goes to the script in the future
+  af_sb_init_service lessertunjo0 stop
+
+  HILDON_HOME_PID=$(pidof hildon-home)
+  if test "x$HILDON_HOME_PID" != "x"; then
+    $KILL $HILDON_HOME_PID
+  fi
+
+  af_sb_init_misbehaving_service $MAFW stop
+
+  # remove dbus own dbus pid file
+  rm -rf /var/run/dbus/pid
+fi
+
+START=$TMPSTART
+STOP=$TMPSTOP
+if [ "$START" = "TRUE" ]; then
+
+  # if we are restarting, give some time for the programs to shutdown
+  if [ "$STOP" = "TRUE" ]; then
+    # if we are not using sbrsh sleep just a seconds, otherwise a bit longer
+    if [ -z "$SBRSH" ]; then
+      sleep 1
+    else
+      sleep 5
+    fi
+  fi
+
+  if [ "x$MYDOCSDIR" = "x" ]; then
+      echo "$0: Error, MYDOCSDIR is not defined"
+      exit 2
+  fi
+
+  host=`echo $DISPLAY | cut -f 1 -d ':'`
+  if [ -z "$host" ]; then
+  	echo "Note: For remote X connections DISPLAY should contain hostname!"
+  fi
+
+  # Create some files to play with
+
+  # normally osso-af-startup creates these...
+  mkdir -p $MYDOCSDIR/.games $MYDOCSDIR/.videos $MYDOCSDIR/.documents
+  mkdir -p $MYDOCSDIR/.images $MYDOCSDIR/.sounds
+  if [ -e $MYDOCSDIR/foo.txt ]; then
+    echo "Sample files present."
+  else
+    touch $MYDOCSDIR/foo.txt
+    touch $MYDOCSDIR/.videos/video1.mpg $MYDOCSDIR/.videos/video2.avi
+    touch $MYDOCSDIR/.sounds/clip1.wav $MYDOCSDIR/.sounds/clip2.mp3
+    touch $MYDOCSDIR/.documents/sheet1.xls $MYDOCSDIR/.documents/document.doc
+    touch $MYDOCSDIR/.images/image1.png $MYDOCSDIR/.images/image2.jpg
+  fi
+
+  # remove dbus own dbus pid file
+  rm -rf /var/run/dbus/pid
+  
+  # start dbus system and session busses
+  af_sb_service dbus-systembus start
+  af_sb_service dbus-sessionbus start
+
+  # resource AF_DEFS to read the address of the dbus session address
+  . $AF_DEFS
+
+  # make some directories for games
+  af_sb_init_service lessertunjo0 start
+
+  # start maemo-launcher
+  af_sb_init_service maemo-launcher start
+
+  # start at-spi 
+  af_sb_init_service at-spi start
+
+  # start GConf
+  /usr/lib/gconf2/gconfd-2 &
+
+  # start sapwood
+  af_sb_service sapwood-server start
+
+  # set gconf values for im
+  gconftool-2 -t bool -s /apps/osso/inputmethod/have-internal-keyboard true &
+  gconftool-2 -t bool -s /system/osso/af/slide-open false &
+
+  # start hildon-desktop
+  af_sb_init_service hildon-desktop start
+
+  # start hildon-status-menu
+  if test -x /usr/bin/hildon-status-menu; then
+    /usr/bin/hildon-status-menu &
+  fi
+
+  # start hildon-home
+  if test -x /usr/bin/hildon-home; then
+    /usr/bin/hildon-home &
+  fi
+
+  # start HIM
+  af_sb_service keyboard start
+
+  # application support for the sdk
+  af_sb_init_misbehaving_service $CLOCKD start
+  if [ -e $TRACKER ] ; then
+    $TRACKER &
+  fi
+  af_sb_init_misbehaving_service $SYSTEMUI start
+  mafw-dbus-wrapper /usr/lib/mafw-plugin/mafw-tracker-source.so &
+  mafw-dbus-wrapper /usr/lib/mafw-plugin/mafw-gst-renderer.so &
+  af_sb_init_service tablet-browser-daemon.init start
+  af_sb_init_misbehaving_service $ALARMD start
+fi

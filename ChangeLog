@@ -1,0 +1,19 @@
+2008-04-11  Gabriel Schulhof <gabriel.schulhof@nokia.com>
+
+	* Do not kill -9 a process inside scratchbox-launcher.sh. Do a plain kill instead.
+	* Partially fixes NB#80032 (works only on x86)
+
+2008-01-17  Gabriel Schulhof <gabriel.schulhof@nokia.com>
+
+	* Improved GTK+ theme validity check
+	* Fixes: NB#79037
+
+2005-12-02  Guillem Jover  <guillem.jover@nokia.com>
+
+	* configure.ac (AC_INIT, AM_INIT_AUTOMAKE, AC_OUTPUT): Use autoconf
+	new 2.59 syntax.
+	(AC_INIT): Synced version.
+	(AC_PREREQ, AC_CONFIG_FILES): New macros.
+	(AC_PROG_CC, AC_PROG_CPP, AC_PROG_INSTALL, AC_PROG_RANLIB,
+	AC_PROG_LIBTOOL, AM_CONFIG_HEADER, AC_CANONICAL_HOST): Remove not used
+	macros.

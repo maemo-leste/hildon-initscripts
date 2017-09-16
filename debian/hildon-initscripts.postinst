@@ -1,0 +1,13 @@
+#!/bin/sh
+
+HOME=/etc/skel
+
+DEFAULTCONF=$HOME/.osso/current-gtk-theme
+if [ ! -e $DEFAULTCONF ]; then
+  cp -f /etc/osso-af-init/current-gtk-theme.default $DEFAULTCONF
+fi
+
+DEFAULTKEYCONF=$HOME/.osso/current-gtk-key-theme
+if [ ! -e $DEFAULTKEYCONF ]; then
+  cp -f /etc/osso-af-init/current-gtk-key-theme.default $DEFAULTKEYCONF
+fi

@@ -1,0 +1,68 @@
+#!/usr/bin/make -f
+# -*- makefile -*-
+# Sample debian/rules that uses debhelper.
+# GNU copyright 1997 to 1999 by Joey Hess.
+
+# Uncomment this to turn on verbose mode.
+#export DH_VERBOSE=1
+
+configure:
+	./autogen.sh
+
+config.status: configure
+	dh_testdir
+	CFLAGS="$(CFLAGS)" ./configure \
+		--host=$(DEB_HOST_GNU_TYPE) --build=$(DEB_BUILD_GNU_TYPE) \
+		--prefix=/usr --sysconfdir=/etc --mandir=\$${prefix}/share/man \
+		--infodir=\$${prefix}/share/info \
+		--disable-dependency-tracking
+
+build: config.status
+	dh_testdir
+	
+	$(MAKE)
+
+clean:
+	dh_testdir
+	dh_testroot
+	-$(MAKE) squeaky	
+	dh_clean
+
+install: build
+	dh_testdir
+	dh_testroot
+	dh_clean -k
+	dh_installdirs
+	
+	$(MAKE) install DESTDIR=$(CURDIR)/debian/build
+	mkdir -p $(CURDIR)/debian/build/etc/skel/.osso
+
+binary-indep: build install
+	dh_testdir
+	dh_testroot
+	dh_installchangelogs
+	dh_installdocs
+	dh_install --sourcedir=debian/build -v
+#	dh_installlogrotate
+#	dh_installpam
+#	dh_installinit
+#	dh_installcron
+	dh_installman
+	dh_link
+	dh_strip
+	dh_compress
+	dh_fixperms
+	dh_makeshlibs -V
+	dh_installdeb
+	dh_shlibdeps
+	dh_gencontrol
+	dh_md5sums
+	dh_builddeb
+
+binary-arch: build install
+# Nothing to do.
+
+binary: binary-indep binary-arch
+
+.PHONY: build clean binary-indep binary-arch binary install
+
