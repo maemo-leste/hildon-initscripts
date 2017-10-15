@@ -35,7 +35,7 @@ TMPSVC=`echo $SVC | sed -e 's/ /_/g'`;
 PIDFILE="$AF_PIDDIR/$BASENAME-$TMPSVC.pid"
 
 if [ -e /targets/links/scratchbox.config ]; then
-  source /targets/links/scratchbox.config
+  . /targets/links/scratchbox.config
   if echo $SBOX_CPUTRANSPARENCY_METHOD | grep "sbrsh$" >/dev/null; then
     if [ -z "$SBOX_TARGET_NAME" ]; then
       echo "$0: SBOX_CPUTRANSPARENCY_METHOD defined but SBOX_TARGET_NAME not!"
@@ -59,7 +59,7 @@ if [ $STOP = TRUE ]; then
         echo "Stopping $SVC"
         PID=`cat $PIDFILE`
         grep "$BASENAME" /proc/$PID/cmdline >/dev/null 2>&1
-        if [ $? -eq 0 ]; then       
+        if [ $? -eq 0 ]; then
             kill $PID
         else
             echo "$SVC is not running"
@@ -78,7 +78,7 @@ if [ $START = TRUE ]; then
 	    DOIT=FALSE
 	fi
     fi
-    
+
     if [ $DOIT = TRUE ]; then
 	echo "Starting $SVC"
 	if [ -n $GDB ] && [ "$GDB" = "$BASENAME" ]; then
@@ -90,11 +90,11 @@ if [ $START = TRUE ]; then
 		if [ -z "$CPU_TRANSPARENCY_METHOD" ]; then
 		    # no sbrsh
 		    $CMD $PARAMS &
-		    echo $! > $PIDFILE  
+		    echo $! > $PIDFILE
 		else
 	            if [ x"$CPU_TRANSPARENCY_METHOD" == x"sbrsh $SBOX_TARGET_NAME" ]; then
     		       # We need to run it with sbrsh show that we get the pid of
-		       # the sbrsh and then on stop we can kill the sbrsh and 
+		       # the sbrsh and then on stop we can kill the sbrsh and
 		       # the actual process will die.
 		       $CPU_TRANSPARENCY_METHOD -d $PWD $CMD $PARAMS &
 		       echo $! > $PIDFILE
