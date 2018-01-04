@@ -2,7 +2,7 @@ Source: hildon-initscripts
 Section: base
 Priority: optional
 Maintainer: Gabriel Schulhof <gabriel.schulhof@nokia.com>
-Build-Depends: debhelper (>= 4.0.0), autoconf, automake
+Build-Depends: debhelper (>= 9.20160114), autoconf, automake
 Standards-Version: 3.6.2
 
 Package: hildon-initscripts
