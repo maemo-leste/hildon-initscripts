@@ -9,8 +9,6 @@ Package: hildon-initscripts
 Section: base
 Architecture: all
 Depends: gtk2-engines-sapwood, dbus, osso-af-startup, theme-config
-Conflicts: hildon-base
-Replaces: hildon-base
 Description: Miscellaneous startup files.
  run-standalone.sh, and osso-gtk.defs.
 
